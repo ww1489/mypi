@@ -13,7 +13,7 @@
 3. 单次提问（带参数）和交互模式**必须走同一个** `Agent.Run` 调用路径，不能各写一套。
 4. 输入结束（EOF / Ctrl-D）时退出码 0，不打印堆栈。
 5. 空行跳过，不发起请求。
-6. 某一轮 provider 报错：错误打到 stderr，**历史保持不变**（那半截问题不能留在上下文里），循环继续。
+6. 某一轮 provider 报错：错误打到 stderr，循环继续；但**历史里要留下一条失败记录**——追加一条 `StopReason=error` 的 assistant 消息（带你拿到的错误文案）。
 7. 如果 stdin 是终端，打印 `> ` 提示符；从管道读的时候不要掺提示符，否则会污染输出。
 
 ## 约束
@@ -44,20 +44,44 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 
 第二条命令要能看到两段回答，并且第二次请求带着第一轮的一问一答（加 `MYPY_FAUX_RECORD=/tmp/rec.jsonl` 看录制文件）。
 
-## 先自己想，再对答案
+## PiG 是怎么做的（已替你查过）
 
-写之前先回答这三个问题：
+### 失败的轮次：进历史
 
-1. 失败的轮次该不该进历史？如果进了，下一轮模型会看到什么？
-2. stdin 是管道时为什么不该打印 `> `？
-3. 历史切片传进 `Run` 之后，`Run` 内部 `append` 会不会改到调用方那份？为什么？
+`PiG/agent/agent_loop.go:293-311`：`runTurn` 里 `appendAssistant` 在校验 StopReason **之前**：
 
-实在想不通再看参考实现：
-
-```bash
-git diff 67ac58a..step-02-solution -- cmd/mypi
+```go
+assistant, toolCalls, err := r.streamAssistantResponse()
+r.appendAssistant(assistant)
+if assistant.StopReason == ai.StopReasonError || assistant.StopReason == ai.StopReasonAborted {
+    ...  // 硬退出
+}
 ```
 
-## 卡住超过两小时
+出错时它会合成一条空文本的 assistant 消息，带 `StopReason: error` 和 `ErrorMessage`（`agent_loop.go:553-585`）。于是失败后的历史是 `[user, assistant(error)]`——**结构完整**，不会出现"用户问了但没人回答"的断头记录。
 
-按 `AGENTS.md`：允许直接看 `step-02-solution`，记为 `step-02-ref`，并补一份「我卡在哪」的笔记放进 `docs/notes/`。
+对我们的要求：`AssistantMessage` 加一个 `ErrorMessage` 字段；`Agent.Run` 失败时返回「历史 + 错误消息」以及错误本身；调用方收下这份历史再继续。
+
+### 终端 vs 管道：决定的是模式，不只是提示符
+
+`PiG/coding/cli/main.go:203`：
+
+```go
+if term.IsTerminal(int(os.Stdin.Fd())) {
+    return "", nil   // 是终端 → 不读管道
+}
+```
+
+stdin 是终端就进交互模式；不是终端就把 stdin 整个读成输入走 print 模式。再加 `print_mode.go:179`：stdout 不是终端时接管 stdout，把杂项输出改道 stderr，保证输出里只有答案。
+
+### 切片：谁拥有谁维护，递出去时复制
+
+- 自己攒历史：`appendMessage` 直接 `r.context = append(...)`（`agent_loop.go:408`）
+- 交给外部：`turnContext` 里 `slices.Clone(r.context)`、`slices.Clone(r.newMessages)`（`agent_loop.go:337`）
+- 事件里带消息：`startEventMessage` 把指针字段复制一份（`agent_loop.go:418`）
+
+所以 `append(clone(history), ...)` 这种写法是对的：先复制再拼，绝不改调用方那份。
+
+## 实在卡住
+
+参考实现在分支 `step-02-solution`（`git diff 67ac58a..step-02-solution -- cmd/mypi`）。超过两小时再看，按 `AGENTS.md` 记 `step-02-ref`，并补一份「我卡在哪」的笔记放进 `docs/notes/`。
