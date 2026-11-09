@@ -1,7 +1,7 @@
-// Package agent 承载把 provider 事件变成对话历史的循环。
+// Package agent 负责调用 provider，并把结果拼回对话历史。
 //
-// 第 01 步只做一次请求。多轮循环、工具调用与事件分发会在后续步骤加入；
-// 现在让这个文件足够小，后续每次增加才能作为 diff 被看清楚。
+// 现在一次只发一个请求。多轮对话、工具调用、事件分发都在后面的步骤里加，
+// 这样每次新增都能在 diff 里看得很清楚。
 package agent
 
 import (
@@ -12,17 +12,17 @@ import (
 	"mypi/ai"
 )
 
-// Agent 在已有对话历史上驱动一个 provider。
+// Agent 拿着对话历史去问 provider。
 type Agent struct {
 	Provider ai.Provider
 	Model    string
 	System   string
-	// OnEvent 观察每一个流式事件，可以为 nil。
+	// OnEvent 每来一个流式事件就调一次。不需要就留空。
 	OnEvent func(ai.Event)
 }
 
-// Run 把历史发送给 provider，并返回追加了助手回复的新历史。
-// 入参切片不会被原地修改。
+// Run 发一次请求，返回「原来的历史 + 模型这条回复」。
+// 传进来的切片不会被改动。
 func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, error) {
 	if a.Provider == nil {
 		return history, errors.New("agent: no provider configured")

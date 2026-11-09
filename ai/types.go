@@ -1,44 +1,43 @@
-// Package ai 定义 agent 循环所需的 provider 契约、消息类型与流式事件。
+// Package ai 放 agent 循环要用到的东西：provider 接口、消息类型、流式事件。
 //
-// 命名刻意与 PiG 的 ai 包保持一致，方便两棵代码树并排阅读。这里只是 mypi
-// 当前步骤需要的最小子集；后续每一步都会把它加宽，而"加宽"本身就是教学点。
+// 名字和 PiG 的 ai 包保持一致，方便两边对着看。这里只有当前步骤用得上的部分，
+// 后面的步骤会一点点往里加。
 package ai
 
 import "context"
 
-// ContentBlock 是消息内容的一个片段。
+// ContentBlock 是消息内容的一小块。
 //
-// 第 01 步只会产出文本。工具调用会在后续步骤作为新的块类型出现，所以这里保留
-// Type 判别字段，而不是退化成裸字符串。
+// 现在只有文本。以后要加工具调用，所以留了 Type 字段，而不是直接存一段字符串。
 type ContentBlock struct {
 	Type string `json:"type"` // "text"
 	Text string `json:"text,omitempty"`
 }
 
-// Text 构造只含一个文本块的切片。
+// Text 把一段字符串包成内容块。
 func Text(s string) []ContentBlock {
 	return []ContentBlock{{Type: "text", Text: s}}
 }
 
-// Message 是 agent 与 provider 之间交换的角色总和。
+// Message 是对话里的一条消息，要么是用户说的，要么是模型说的。
 //
-// Go 没有求和类型，所以用"接口 + 具体类型 + 边界处的类型分支"来表达这组并集。
-// 字段名与 JSON tag 镜像 PiG，方便后续步骤逐字段对照会话文件。
+// Go 没有"这几个类型之一"的写法，所以用接口表示，要分情况处理时再 switch。
+// 字段名和 JSON tag 跟 PiG 一样，以后存会话文件可以直接对比。
 type Message interface {
 	Role() string
 }
 
-// UserMessage 是人类发出的消息。
+// UserMessage 是用户说的话。
 type UserMessage struct {
 	Content []ContentBlock `json:"content"`
 }
 
-// Role 实现 Message 接口。
+// Role 返回角色名。
 func (m *UserMessage) Role() string {
 	return "user"
 }
 
-// AssistantMessage 是模型发出的消息。
+// AssistantMessage 是模型返回的内容。
 type AssistantMessage struct {
 	Content    []ContentBlock `json:"content"`
 	Provider   string         `json:"provider,omitempty"`
@@ -46,18 +45,18 @@ type AssistantMessage struct {
 	StopReason string         `json:"stopReason,omitempty"`
 }
 
-// Role 实现 Message 接口。
+// Role 返回角色名。
 func (m *AssistantMessage) Role() string {
 	return "assistant"
 }
 
-// provider 返回的停止原因。
+// 模型停下来时的原因。
 const (
-	StopReasonStop  = "stop"
-	StopReasonError = "error"
+	StopReasonStop  = "stop"  // 正常说完了
+	StopReasonError = "error" // 出错了
 )
 
-// TextOf 拼接所有文本块，忽略其它块类型。
+// TextOf 把所有文本块拼起来，其他类型的块跳过。
 func TextOf(blocks []ContentBlock) string {
 	var out string
 	for _, b := range blocks {
@@ -68,16 +67,16 @@ func TextOf(blocks []ContentBlock) string {
 	return out
 }
 
-// WireMessage 是 provider 在线路上看到的 JSON 形状。
+// WireMessage 是真正发给 provider 的 JSON 结构。
 //
-// 之所以单独存在：Go 消息类型把角色隐含在具体类型里，而协议需要它作为一个
-// 字段。录制文件复用同一形状，因此测试可以断言"模型究竟被告知了什么"。
+// Go 这边靠具体类型区分角色，但协议里角色是一个字段，所以发请求前要转一下。
+// 请求录制也用这个结构，测试就能直接看到"模型到底收到了什么"。
 type WireMessage struct {
 	Role    string         `json:"role"`
 	Content []ContentBlock `json:"content"`
 }
 
-// Wire 把消息转换成线路表示。
+// Wire 把消息转成能发出去的 JSON 结构。
 func Wire(msgs []Message) []WireMessage {
 	out := make([]WireMessage, 0, len(msgs))
 	for _, m := range msgs {
@@ -91,43 +90,44 @@ func Wire(msgs []Message) []WireMessage {
 	return out
 }
 
-// Request 是一次 provider 调用。
+// Request 是一次请求。
 type Request struct {
 	Model    string
 	System   string
 	Messages []Message
 }
 
-// Event 是 provider 流式输出中的一项。
+// Event 是流式输出里的一条事件。
 type Event interface {
 	isEvent()
 }
 
-// TextDeltaEvent 携带一段增量助手文本。
+// TextDeltaEvent 是一小段刚生成的回答文本。
 type TextDeltaEvent struct {
 	Text string
 }
 
-// MessageDoneEvent 携带完整的助手消息。
+// MessageDoneEvent 表示这次回答结束了，并且带着完整的消息。
 type MessageDoneEvent struct {
 	Message *AssistantMessage
 }
 
-// ErrorEvent 表示流式输出失败。
+// ErrorEvent 表示这次流式输出失败了。
 type ErrorEvent struct {
 	Err error
 }
 
-// 下面三个方法把具体类型封闭进 Event 并集：只有本包内的类型能实现 Event。
+// 下面三个方法让 Event 只能由本包里的类型实现。
 func (TextDeltaEvent) isEvent()   {}
 func (MessageDoneEvent) isEvent() {}
 func (ErrorEvent) isEvent()       {}
 
 // Provider 是每个模型后端都要实现的接口。
 type Provider interface {
-	// ID 标识后端，例如 "faux"。
+	// ID 返回后端名字，比如 "faux"。
 	ID() string
-	// Stream 发起一次响应。返回的 channel 由 provider 负责关闭，且必定以
-	// MessageDoneEvent 或 ErrorEvent 收尾。
+
+	// Stream 发一次请求，用一个 channel 把结果流式吐出来。
+	// channel 由实现方关闭，最后一条一定是 MessageDoneEvent 或 ErrorEvent。
 	Stream(ctx context.Context, req Request) (<-chan Event, error)
 }

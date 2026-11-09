@@ -1,5 +1,4 @@
-// Command mypi 是一个按教学节奏逐步搭建起来的最小编码 agent。
-// 它的分层与 PiG 仓库保持一致，方便两边并排阅读。
+// Command mypi 是一个边学边写的编码 agent。目录结构照着 PiG 来，方便对照。
 package main
 
 import (

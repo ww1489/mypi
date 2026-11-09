@@ -15,14 +15,14 @@ import (
 	"mypi/ai"
 )
 
-// version 是 --version 报告的内容，它绝不读取用户配置。
+// version 是 --version 打印的版本号。打印它不需要读任何配置。
 const version = "0.0.1"
 
-// defaultModel 是交给 provider 的模型名。faux provider 会原样回显，
-// 足以证明整条链路已经接通。
+// defaultModel 是默认模型名。faux provider 会把它写进录制文件，
+// 用来确认参数确实传到了 provider。
 const defaultModel = "faux-1"
 
-// 退出码。它们是 CLI 契约的一部分，测试会据此断言。
+// 退出码。测试会直接断言这几个值。
 const (
 	exitOK    = 0
 	exitError = 1
@@ -53,8 +53,8 @@ type options struct {
 	provider    string
 }
 
-// parseArgs 手写遍历参数列表。PiG 也是这么做的：对于文法如此之小的 CLI，
-// flag 库带来的收益很小，而手写解析能让错误信息保持是我们自己的措辞。
+// parseArgs 自己挨个解析参数。参数就这几个，用 flag 库不划算，
+// 报错信息也能自己写清楚。
 func parseArgs(args []string) (options, error) {
 	opts := options{model: defaultModel, provider: "faux"}
 	var positional []string

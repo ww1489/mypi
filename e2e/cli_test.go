@@ -1,8 +1,6 @@
-// Package e2e 以黑盒方式驱动 mypi 二进制。
-//
-// 这里的一切都经过进程边界：参数进，stdout / stderr / 退出码出，再加上 faux
-// provider 写下的请求录制。没有测试伸手去碰包的内部结构，因此重构实现永远
-// 不该迫使这里改动。
+// Package e2e 用黑盒方式测 mypi：把参数交给二进制，检查 stdout、stderr、
+// 退出码，以及 faux provider 记下来的请求。测试不碰内部代码，改实现时这里
+// 不用跟着改。
 package e2e
 
 import (
@@ -67,8 +65,7 @@ type result struct {
 	code   int
 }
 
-// run 在封闭环境中执行二进制：HOME 指向全新的临时目录，任何用户配置都不可能
-// 被意外读到。
+// run 跑一次 mypi。HOME 指向临时目录，保证读不到本机的用户配置。
 func run(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
 
@@ -106,7 +103,7 @@ func hermeticEnv(t *testing.T, extra map[string]string) []string {
 	return env
 }
 
-// writeScript 写入一个 faux 回放脚本并返回其路径。
+// writeScript 写一个 faux 脚本文件，返回它的路径。
 func writeScript(t *testing.T, script string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "script.json")

@@ -10,37 +10,35 @@ import (
 	"sync"
 )
 
-// 配置 faux provider 的环境变量。
+// faux provider 用到的环境变量。
 const (
-	// FauxScriptEnv 指向被回放的 JSON 脚本。
+	// FauxScriptEnv 是假回复脚本的路径。
 	FauxScriptEnv = "MYPY_FAUX_SCRIPT"
-	// FauxRecordEnv 指向一个文件，每个请求向其追加一行 JSON。
-	// 它就是测试使用的观测面。
+	// FauxRecordEnv 是录制文件的路径，每发一次请求就往里加一行 JSON。
+	// 测试就是靠它看 agent 到底发了什么。
 	FauxRecordEnv = "MYPY_FAUX_RECORD"
 )
 
-// FauxScript 是磁盘上的回放脚本。
+// FauxScript 是磁盘上的脚本文件。
 //
 //	{"responses":[{"chunks":["hello"," world"],"stopReason":"stop"}]}
 //
-// 响应按顺序消费，每个请求取一条。带 "error" 字段的响应会让该请求失败，
-// 而不是产出文本。
+// 每来一个请求就按顺序取一条。哪条写了 "error"，那个请求就直接失败。
 type FauxScript struct {
 	Responses []FauxResponse `json:"responses"`
 }
 
-// FauxResponse 是一条脚本化的回复。
+// FauxResponse 是一条假回复。
 type FauxResponse struct {
 	Chunks     []string `json:"chunks"`
 	StopReason string   `json:"stopReason,omitempty"`
 	Error      string   `json:"error,omitempty"`
 }
 
-// Faux 是一个脚本化 provider：它回放预置的假回复，而不会调用模型。每个请求
-// 都会追加到录制文件，使测试能够断言 agent 实际发送了什么，而不只是打印了
-// 什么。
+// Faux 是个假 provider：不连模型，直接把脚本里的回复吐出来。每次请求都记到
+// 录制文件里，这样测试能检查 agent 发了什么，而不只是看它打印了什么。
 //
-// 构造时不读取任何文件，因此 --help、--version 在无配置的环境下也能正常工作。
+// 创建时什么都不读，所以 --help、--version 在没有配置的机器上也能跑。
 type Faux struct {
 	scriptPath string
 	recordPath string
@@ -51,7 +49,7 @@ type Faux struct {
 	recorder *os.File
 }
 
-// NewFaux 依据环境变量构造 provider。
+// NewFaux 从环境变量读出脚本路径和录制路径。文件要等第一次请求时才读。
 func NewFaux() *Faux {
 	return &Faux{
 		scriptPath: os.Getenv(FauxScriptEnv),
@@ -59,12 +57,12 @@ func NewFaux() *Faux {
 	}
 }
 
-// ID 实现 Provider 接口。
+// ID 返回后端名字。
 func (f *Faux) ID() string {
 	return "faux"
 }
 
-// Close 释放录制文件。
+// Close 关掉录制文件。
 func (f *Faux) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -76,7 +74,7 @@ func (f *Faux) Close() error {
 	return err
 }
 
-// Stream 实现 Provider 接口。
+// Stream 从脚本里取一条回复，当作流式结果吐出去。
 func (f *Faux) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 	if err := f.loadScript(); err != nil {
 		return nil, err
@@ -162,7 +160,7 @@ func (f *Faux) loadScript() error {
 	return nil
 }
 
-// fauxRecord 是每个请求写下的稳定、可 diff 的形状。
+// fauxRecord 是每次请求写进录制文件的那一行。
 type fauxRecord struct {
 	Model    string        `json:"model"`
 	System   string        `json:"system"`
