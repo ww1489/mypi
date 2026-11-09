@@ -102,6 +102,9 @@ func Wire(msgs []Message) []WireMessage {
 }
 
 // Request 是一次请求。
+//
+// Messages 是整段对话，不是一条消息。模型不记事，每次请求都得把全部历史重发。
+// 单次问答时它只有一条，多轮对话和工具调用之后会越来越长。
 type Request struct {
 	Model    string
 	System   string

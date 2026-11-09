@@ -73,7 +73,27 @@ PiG 每个消息都带 `cloneMessage()`，因为会话树分叉时要做深拷�
 
 `Request.System` 字段有了，但 CLI 从来不填。PiG 的 system prompt 是一整套分节拼装（`internal/codingagent/prompts/coding.go`）。我们到票 03 引入工具声明增量时才会第一次真正需要它。
 
+### 6. system 是 Request 上的一个字段，不是消息数组里的元素
+
+我们是 `Request{Model, System string, Messages []Message}`。
+
+PiG 把系统提示当成 `Messages` 数组里的一条 `SystemMessage`（`PiG/ai/messages.go:107`），它本身还带 `Sections`、`ToolsAdded`、`ToolsRemoved`：
+
+```go
+type SystemMessage struct {
+	Content      SystemContent   `json:"content"`
+	Sections     OrderedSections `json:"sections,omitempty"`
+	Timestamp    int64           `json:"timestamp"`
+	ToolsAdded   []ToolSchema    `json:"toolsAdded,omitempty"`
+	ToolsRemoved []ToolReference `json:"toolsRemoved,omitempty"`
+}
+```
+
+**为什么要跟着改**：工具声明增量是挂在 system 消息上的，而且可能在对话中间出现（比如第 3 轮才加了一个工具）。如果 system 只能是一个固定的开头字符串，增量就无处安放。
+
+**什么时候改**：票 03，和"工具声明以 system 消息增量下发"一起做。
+
 ## 下一票的前置
 
 - 票 02 只需要 `Agent.Run` 外面套一层输入循环，`ai` 包不用动。
-- 票 03 会同时做两件事：加 `ToolResultMessage` + 把 `ContentBlock` 升级成接口 + 多实现。
+- 票 03 会同时做三件事：加 `ToolResultMessage` + 把 `ContentBlock` 升级成接口 + 多实现 + 把 system 提示挪进 Messages 数组（带工具声明增量）。
