@@ -10,38 +10,37 @@ import (
 	"sync"
 )
 
-// Environment variables that configure the faux provider.
+// 配置 faux provider 的环境变量。
 const (
-	// FauxScriptEnv points at the JSON script replayed by the provider.
+	// FauxScriptEnv 指向被回放的 JSON 脚本。
 	FauxScriptEnv = "MYPY_FAUX_SCRIPT"
-	// FauxRecordEnv points at a file that receives one JSON line per request.
-	// It is the observation surface used by tests.
+	// FauxRecordEnv 指向一个文件，每个请求向其追加一行 JSON。
+	// 它就是测试使用的观测面。
 	FauxRecordEnv = "MYPY_FAUX_RECORD"
 )
 
-// FauxScript is the on-disk replay script.
+// FauxScript 是磁盘上的回放脚本。
 //
 //	{"responses":[{"chunks":["hello"," world"],"stopReason":"stop"}]}
 //
-// Responses are consumed in order, one per request. A response with "error"
-// set fails that request instead of producing text.
+// 响应按顺序消费，每个请求取一条。带 "error" 字段的响应会让该请求失败，
+// 而不是产出文本。
 type FauxScript struct {
 	Responses []FauxResponse `json:"responses"`
 }
 
-// FauxResponse is one scripted reply.
+// FauxResponse 是一条脚本化的回复。
 type FauxResponse struct {
 	Chunks     []string `json:"chunks"`
 	StopReason string   `json:"stopReason,omitempty"`
 	Error      string   `json:"error,omitempty"`
 }
 
-// Faux is a scripted provider: it replays canned responses instead of calling a
-// model. Every request is appended to a recording file so tests can assert what
-// the agent actually sent, not just what it printed.
+// Faux 是一个脚本化 provider：它回放预置的假回复，而不会调用模型。每个请求
+// 都会追加到录制文件，使测试能够断言 agent 实际发送了什么，而不只是打印了
+// 什么。
 //
-// Nothing is read at construction time, so commands such as --help and --version
-// work with no configuration present.
+// 构造时不读取任何文件，因此 --help、--version 在无配置的环境下也能正常工作。
 type Faux struct {
 	scriptPath string
 	recordPath string
@@ -52,7 +51,7 @@ type Faux struct {
 	recorder *os.File
 }
 
-// NewFaux builds a provider from the environment.
+// NewFaux 依据环境变量构造 provider。
 func NewFaux() *Faux {
 	return &Faux{
 		scriptPath: os.Getenv(FauxScriptEnv),
@@ -60,10 +59,10 @@ func NewFaux() *Faux {
 	}
 }
 
-// ID implements Provider.
+// ID 实现 Provider 接口。
 func (f *Faux) ID() string { return "faux" }
 
-// Close releases the recording file.
+// Close 释放录制文件。
 func (f *Faux) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -75,7 +74,7 @@ func (f *Faux) Close() error {
 	return err
 }
 
-// Stream implements Provider.
+// Stream 实现 Provider 接口。
 func (f *Faux) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 	if err := f.loadScript(); err != nil {
 		return nil, err
@@ -161,7 +160,7 @@ func (f *Faux) loadScript() error {
 	return nil
 }
 
-// fauxRecord is the stable, diffable shape written per request.
+// fauxRecord 是每个请求写下的稳定、可 diff 的形状。
 type fauxRecord struct {
 	Model    string        `json:"model"`
 	System   string        `json:"system"`

@@ -1,9 +1,8 @@
-// Package e2e drives the mypi binary as a black box.
+// Package e2e 以黑盒方式驱动 mypi 二进制。
 //
-// Everything here goes through the process boundary: arguments in, stdout /
-// stderr / exit code out, plus the request recording the faux provider writes.
-// No test reaches into package internals, so refactoring the implementation
-// should never force a change here.
+// 这里的一切都经过进程边界：参数进，stdout / stderr / 退出码出，再加上 faux
+// provider 写下的请求录制。没有测试伸手去碰包的内部结构，因此重构实现永远
+// 不该迫使这里改动。
 package e2e
 
 import (
@@ -68,8 +67,8 @@ type result struct {
 	code   int
 }
 
-// run executes the binary with a hermetic environment: HOME points at a fresh
-// temp dir so nothing can read user configuration by accident.
+// run 在封闭环境中执行二进制：HOME 指向全新的临时目录，任何用户配置都不可能
+// 被意外读到。
 func run(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
 
@@ -107,7 +106,7 @@ func hermeticEnv(t *testing.T, extra map[string]string) []string {
 	return env
 }
 
-// writeScript writes a faux replay script and returns its path.
+// writeScript 写入一个 faux 回放脚本并返回其路径。
 func writeScript(t *testing.T, script string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "script.json")
