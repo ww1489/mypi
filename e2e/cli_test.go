@@ -65,13 +65,20 @@ type result struct {
 	code   int
 }
 
-// run 跑一次 mypi。HOME 指向临时目录，保证读不到本机的用户配置。
+// run 跑一次 mypi，不喂输入。HOME 指向临时目录，保证读不到本机的用户配置。
 func run(t *testing.T, env map[string]string, args ...string) result {
+	t.Helper()
+	return runWithInput(t, env, "", args...)
+}
+
+// runWithInput 跑一次 mypi，并把 input 当作 stdin 喂进去。
+func runWithInput(t *testing.T, env map[string]string, input string, args ...string) result {
 	t.Helper()
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = t.TempDir()
 	cmd.Env = hermeticEnv(t, env)
+	cmd.Stdin = strings.NewReader(input)
 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -280,14 +287,17 @@ func TestUnknownFlagIsUsageError(t *testing.T) {
 	}
 }
 
-func TestMissingPromptIsUsageError(t *testing.T) {
+func TestNoInputAndNoPromptExitsCleanly(t *testing.T) {
 	got := run(t, nil)
 
-	if got.code != 2 {
-		t.Fatalf("exit code = %d, want 2", got.code)
+	if got.code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", got.code, got.stderr)
 	}
-	if !strings.Contains(got.stderr, "missing prompt") {
-		t.Errorf("stderr = %q, want a missing-prompt message", got.stderr)
+	if got.stdout != "" {
+		t.Errorf("stdout = %q, want empty", got.stdout)
+	}
+	if got.stderr != "" {
+		t.Errorf("stderr = %q, want empty", got.stderr)
 	}
 }
 
