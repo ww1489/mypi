@@ -28,6 +28,8 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 
 ### T1 · 让 `run` 拿到 stdin
 
+> 对应验收项：无——它是后面所有任务的实现前提。
+
 **做什么**：给 `run` 加一个 `io.Reader` 参数，`main.go` 传 `os.Stdin`。
 
 **提示**：参数放在 `args` 之后、`stdout` 之前，读起来最顺。
@@ -38,6 +40,8 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 
 ### T2 · 按有没有 prompt 分流
 
+> 对应验收项：第 1 条（无参数 + 输入结束干净退出）、第 6 条（两条路径共用同一个 `Agent.Run`）。
+
 **做什么**：删掉"缺 prompt → `exitUsage`"那段，改成两个分支——有 prompt 走单次，没有走交互。两条路必须共用同一个 `agent.Agent` 实例。
 
 **提示**：删掉的是**整个 if 块**，不是把条件改宽。分流点放在 `ag` 构造之后，这样 provider、`OnEvent`、`ctx` 都只有一份。
@@ -47,6 +51,8 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 ---
 
 ### T3 · 交互循环
+
+> 对应验收项：第 1 条（EOF 退出码 0）、第 2 条（历史累积、角色交替）、第 4 条（空行不发请求）。
 
 **做什么**：读一行 → 跳过空行 → 拼「历史 + 这一句」→ 调 `Run` → 打印 → 继续；读到 EOF 退出，退出码 0。
 
@@ -63,6 +69,8 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 
 ### T4 · 失败留痕
 
+> 对应验收项：第 5 条（报错后循环继续，历史里保留失败那条 assistant 消息）。
+
 **做什么**：`Agent.Run` 失败时，返回「历史 + 一条 `StopReason: error` 的 assistant 消息」**并且**返回错误；`AssistantMessage` 加 `ErrorMessage string` 字段；CLI 失败时把这份历史收下再继续。
 
 **提示**：
@@ -77,6 +85,8 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 
 ### T5 · 输出格式与提示符
 
+> 对应验收项：第 3 条（答案顺序正确、相邻两轮之间只有一个换行）。
+
 **做什么**：答案按增量实时写到 stdout；每轮结束后只补**一个**换行；只有 stdin 是终端时才打印 `> `。
 
 **提示**：
@@ -87,16 +97,18 @@ printf '第一问\n第二问\n' | go run ./cmd/mypi
 
 **完成标志**：管道输入时 stdout 里**没有** `> `，也没有多余空行。
 
-## 4. 验收测试映射
+## 4. 验收项 → 任务 → 测试
 
-| 测试 | 验的是 |
-| --- | --- |
-| `TestNoInputAndNoPromptExitsCleanly` | T2 + T3（空输入、退出码 0） |
-| `TestReplSendsGrowingHistory` | T3（历史累积、角色交替） |
-| `TestReplPrintsEveryAnswer` | T5（精确输出） |
-| `TestReplIgnoresBlankLines` | T3（空行不发请求） |
-| `TestReplRecordsFailedTurnInHistory` | T4（失败留痕） |
-| `TestReplEOFExitsCleanly` | T3（EOF 干净退出） |
+票上第 7 条是“既有测试全绿”，由全部测试覆盖，不单独列。
+
+| 票的验收项 | 由哪个任务实现 | 验收测试 |
+| --- | --- | --- |
+| 1. 无参数 + 输入结束 → 退出码 0、无输出 | T2、T3 | `TestNoInputAndNoPromptExitsCleanly`、`TestReplEOFExitsCleanly` |
+| 2. 三轮对话，第三次请求 5 条消息、角色交替 | T3 | `TestReplSendsGrowingHistory` |
+| 3. 答案顺序正确，相邻两轮只一个换行 | T5 | `TestReplPrintsEveryAnswer` |
+| 4. 空行/纯空白行不发请求 | T3 | `TestReplIgnoresBlankLines` |
+| 5. 失败后循环继续，历史保留失败消息 | T4 | `TestReplRecordsFailedTurnInHistory` |
+| 6. 两条路径共用同一 `Agent.Run` | T2 | `TestReplSendsGrowingHistory` + 既有单次提问测试 |
 
 ## 5. 执行顺序
 
