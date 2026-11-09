@@ -1,87 +1,133 @@
 # 票 02 任务卡：多轮对话循环
 
-## 这一步要回答的问题
+## 1. 目标
 
-**每轮为什么要重发整段历史？历史该由谁持有？**
+**让 `mypi` 能连续对话**：不带参数启动时，从 stdin 一行一行读问题，每读一行问一次模型，并且每次都把之前所有消息一起发过去。
 
-模型本身不记事，它看到的只有这次请求里的 `Messages`。所以"记得前面说过什么"这件事，完全是客户端把历史攒起来再发一遍的功劳。想清楚这一点，再决定历史放在哪：放进 `Agent`（有状态），还是留在调用方（无状态）。
+一句话验收：
 
-## 你要做的
+```bash
+printf '第一问\n第二问\n' | go run ./cmd/mypi
+```
 
-1. 不带参数启动时进入**交互模式**：从 stdin 一行一行读问题，每读一行就算一轮。
-2. 每一轮把「之前所有消息 + 这一句」发给 provider，再把回复追加进历史。
-3. 单次提问（带参数）和交互模式**必须走同一个** `Agent.Run` 调用路径，不能各写一套。
-4. 输入结束（EOF / Ctrl-D）时退出码 0，不打印堆栈。
-5. 空行跳过，不发起请求。
-6. 某一轮 provider 报错：错误打到 stderr，循环继续；但**历史里要留下一条失败记录**——追加一条 `StopReason=error` 的 assistant 消息（带你拿到的错误文案）。
-7. 如果 stdin 是终端，打印 `> ` 提示符；从管道读的时候不要掺提示符，否则会污染输出。
+要看到两段回答，且录制文件里第二次请求包含「第一问 + 第一答 + 第二问」。
 
-## 约束
+**为什么每轮要重发**：模型不记事。它看到的只有这次请求的 `Messages`，"记得前面说过什么"完全是客户端攒历史再重发的功劳。
 
-- **不要动 `ai` 包**。这一票只改 `cmd/mypi`（必要时加 `agent`），协议层留到票 03。
-- `agent.Agent.Run(ctx, history) ([]ai.Message, error)` 的签名保持不变。
-- 不引第三方依赖；判断是不是终端用标准库就够。
-- 注释用中文、说人话；类型声明逐行展开；函数体不写单行。
+## 2. 起点：当前代码的三个事实
 
-## 验收测试在哪
+先认清现状，任务就是从这三条推出来的：
 
-测试我写好了，放在分支 `step-02-solution` 上（**不是**让你抄实现，那个分支上有实现，先别看）。取测试到工作区，不要提交：
+| 现状 | 位置 | 导致的问题 |
+| --- | --- | --- |
+| `run(args, stdout, stderr)` 拿不到 stdin | `cmd/mypi/cli.go` | 没法读交互输入 |
+| 没给 prompt 就 `exitUsage` | `cmd/mypi/cli.go` | 无参数直接失败 |
+| `Run` 失败时 `return history, err`，历史里没有失败痕迹 | `agent/agent.go` | 出错那轮像没发生过 |
+
+## 3. 任务拆解
+
+### T1 · 让 `run` 拿到 stdin
+
+**做什么**：给 `run` 加一个 `io.Reader` 参数，`main.go` 传 `os.Stdin`。
+
+**提示**：参数放在 `args` 之后、`stdout` 之前，读起来最顺。
+
+**完成标志**：`go build ./...` 通过。
+
+---
+
+### T2 · 按有没有 prompt 分流
+
+**做什么**：删掉"缺 prompt → `exitUsage`"那段，改成两个分支——有 prompt 走单次，没有走交互。两条路必须共用同一个 `agent.Agent` 实例。
+
+**提示**：删掉的是**整个 if 块**，不是把条件改宽。分流点放在 `ag` 构造之后，这样 provider、`OnEvent`、`ctx` 都只有一份。
+
+**完成标志**：`go run ./cmd/mypi` 不再报 `missing prompt`，而是等待输入（Ctrl-D 退出）。
+
+---
+
+### T3 · 交互循环
+
+**做什么**：读一行 → 跳过空行 → 拼「历史 + 这一句」→ 调 `Run` → 打印 → 继续；读到 EOF 退出，退出码 0。
+
+**提示**：
+
+- `bufio.Scanner` 默认单行上限 64KB，粘长文本会报错，先用 `scanner.Buffer(...)` 放宽
+- 历史要**跨轮保留在循环外**，不是每轮新建
+- 拼历史时别原地 `append` 调用方切片（见 T4 提示）
+- 读失败/读到结尾都要能正常结束，不要 `return` 一个非零码
+
+**完成标志**：三行输入 → 三次请求，第三次请求里有 5 条消息，角色是 user/assistant 交替。
+
+---
+
+### T4 · 失败留痕
+
+**做什么**：`Agent.Run` 失败时，返回「历史 + 一条 `StopReason: error` 的 assistant 消息」**并且**返回错误；`AssistantMessage` 加 `ErrorMessage string` 字段；CLI 失败时把这份历史收下再继续。
+
+**提示**：
+
+- 这是本票唯一允许改 `ai` 包的地方（加一个字段）
+- 别原地 `append(history, ...)`：调用方可能还在用那份切片。先 `append(make([]ai.Message, 0, len(history)+1), history...)` 复制一份再拼。PiG 也是这个规矩（`turnContext` 里 `slices.Clone`）
+- CLI 那边顺序很重要：**先收下返回的历史，再判断 err**
+
+**完成标志**：失败一轮后，下一轮请求里是 `[user, assistant, user]` 三条。
+
+---
+
+### T5 · 输出格式与提示符
+
+**做什么**：答案按增量实时写到 stdout；每轮结束后只补**一个**换行；只有 stdin 是终端时才打印 `> `。
+
+**提示**：
+
+- 测试断言的是精确字符串 `"first\nsecond\n"`，多一个空行就挂
+- 已有 `OnEvent` 负责写增量，你只需保证"写"和"补换行"不要重复
+- 判断终端：`file, ok := r.(*os.File)` → `file.Stat()` → `info.Mode()&os.ModeCharDevice != 0`。不是 `*os.File`（比如测试里的 `strings.Reader`）就当不是终端
+
+**完成标志**：管道输入时 stdout 里**没有** `> `，也没有多余空行。
+
+## 4. 验收测试映射
+
+| 测试 | 验的是 |
+| --- | --- |
+| `TestNoInputAndNoPromptExitsCleanly` | T2 + T3（空输入、退出码 0） |
+| `TestReplSendsGrowingHistory` | T3（历史累积、角色交替） |
+| `TestReplPrintsEveryAnswer` | T5（精确输出） |
+| `TestReplIgnoresBlankLines` | T3（空行不发请求） |
+| `TestReplRecordsFailedTurnInHistory` | T4（失败留痕） |
+| `TestReplEOFExitsCleanly` | T3（EOF 干净退出） |
+
+## 5. 执行顺序
+
+1. T1 → `go build ./...` 过
+2. T2 + T3 → `go test ./e2e -run 'Repl|NoInput' -count=1`，先让历史那几条变绿
+3. T4 → `go test ./e2e -run 'FailedTurn' -count=1`
+4. T5 → `go test ./... -count=1` 全绿
+5. 手动跑一次管道 + 看录制文件
+
+一次只推进一个任务，别五个一起改——红了会分不清是哪一步的锅。
+
+## 6. 约束
+
+- `ai` 包只加 `ErrorMessage` 一个字段，别的不动
+- `agent.Agent.Run` 签名不变：`Run(ctx, history) ([]ai.Message, error)`
+- 不引第三方依赖
+- 注释用中文、说人话；类型声明逐行展开；函数体不写单行
+
+## 7. 测试从哪来 / 卡住怎么办
+
+测试在分支 `step-02-solution` 上，取到工作区但不提交：
 
 ```bash
 git checkout step-02-solution -- e2e/multi_turn_test.go e2e/cli_test.go
 ```
 
-`cli_test.go` 也要取，因为多轮测试用到了里面新增的 `runWithInput`，而且原来那条「缺 prompt 报错」的测试在这一票里变成了「无输入干净退出」——这是本票的预期行为变更。
-
-取完跑测试，应该是**红的**。你的任务就是把它变绿。
-
-## 验收命令
+卡住超过两小时再看参考实现（那个分支上也有实现，先别看）：
 
 ```bash
-go vet ./... && go test ./... -count=1
-printf '第一问\n第二问\n' | go run ./cmd/mypi
+git diff 67ac58a..step-02-solution -- cmd/mypi agent
 ```
 
-第二条命令要能看到两段回答，并且第二次请求带着第一轮的一问一答（加 `MYPY_FAUX_RECORD=/tmp/rec.jsonl` 看录制文件）。
+按 `AGENTS.md` 记 `step-02-ref`，并补一份「我卡在哪」的笔记放进 `docs/notes/`。
 
-## PiG 是怎么做的（已替你查过）
-
-### 失败的轮次：进历史
-
-`PiG/agent/agent_loop.go:293-311`：`runTurn` 里 `appendAssistant` 在校验 StopReason **之前**：
-
-```go
-assistant, toolCalls, err := r.streamAssistantResponse()
-r.appendAssistant(assistant)
-if assistant.StopReason == ai.StopReasonError || assistant.StopReason == ai.StopReasonAborted {
-    ...  // 硬退出
-}
-```
-
-出错时它会合成一条空文本的 assistant 消息，带 `StopReason: error` 和 `ErrorMessage`（`agent_loop.go:553-585`）。于是失败后的历史是 `[user, assistant(error)]`——**结构完整**，不会出现"用户问了但没人回答"的断头记录。
-
-对我们的要求：`AssistantMessage` 加一个 `ErrorMessage` 字段；`Agent.Run` 失败时返回「历史 + 错误消息」以及错误本身；调用方收下这份历史再继续。
-
-### 终端 vs 管道：决定的是模式，不只是提示符
-
-`PiG/coding/cli/main.go:203`：
-
-```go
-if term.IsTerminal(int(os.Stdin.Fd())) {
-    return "", nil   // 是终端 → 不读管道
-}
-```
-
-stdin 是终端就进交互模式；不是终端就把 stdin 整个读成输入走 print 模式。再加 `print_mode.go:179`：stdout 不是终端时接管 stdout，把杂项输出改道 stderr，保证输出里只有答案。
-
-### 切片：谁拥有谁维护，递出去时复制
-
-- 自己攒历史：`appendMessage` 直接 `r.context = append(...)`（`agent_loop.go:408`）
-- 交给外部：`turnContext` 里 `slices.Clone(r.context)`、`slices.Clone(r.newMessages)`（`agent_loop.go:337`）
-- 事件里带消息：`startEventMessage` 把指针字段复制一份（`agent_loop.go:418`）
-
-所以 `append(clone(history), ...)` 这种写法是对的：先复制再拼，绝不改调用方那份。
-
-## 实在卡住
-
-参考实现在分支 `step-02-solution`（`git diff 67ac58a..step-02-solution -- cmd/mypi`）。超过两小时再看，按 `AGENTS.md` 记 `step-02-ref`，并补一份「我卡在哪」的笔记放进 `docs/notes/`。
