@@ -1,0 +1,10 @@
+# build output
+/mypi
+*.exe
+
+# local runtime state
+.mypi/
+
+# editor
+.idea/
+.vscode/
