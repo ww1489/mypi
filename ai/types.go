@@ -25,6 +25,9 @@ func Text(s string) []ContentBlock {
 // 字段名和 JSON tag 跟 PiG 一样，以后存会话文件可以直接对比。
 type Message interface {
 	Role() string
+	// Blocks 返回这条消息的内容。有了它，不管来的是哪种消息，
+	// 都能统一读内容，不用每加一种消息就改一遍转换代码。
+	Blocks() []ContentBlock
 }
 
 // UserMessage 是用户说的话。
@@ -35,6 +38,11 @@ type UserMessage struct {
 // Role 返回角色名。
 func (m *UserMessage) Role() string {
 	return "user"
+}
+
+// Blocks 返回消息内容。
+func (m *UserMessage) Blocks() []ContentBlock {
+	return m.Content
 }
 
 // AssistantMessage 是模型返回的内容。
@@ -48,6 +56,11 @@ type AssistantMessage struct {
 // Role 返回角色名。
 func (m *AssistantMessage) Role() string {
 	return "assistant"
+}
+
+// Blocks 返回消息内容。
+func (m *AssistantMessage) Blocks() []ContentBlock {
+	return m.Content
 }
 
 // 模型停下来时的原因。
@@ -80,12 +93,10 @@ type WireMessage struct {
 func Wire(msgs []Message) []WireMessage {
 	out := make([]WireMessage, 0, len(msgs))
 	for _, m := range msgs {
-		switch v := m.(type) {
-		case *UserMessage:
-			out = append(out, WireMessage{Role: v.Role(), Content: v.Content})
-		case *AssistantMessage:
-			out = append(out, WireMessage{Role: v.Role(), Content: v.Content})
-		}
+		out = append(out, WireMessage{
+			Role:    m.Role(),
+			Content: m.Blocks(),
+		})
 	}
 	return out
 }
