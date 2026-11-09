@@ -16,7 +16,6 @@ import (
 type Agent struct {
 	Provider ai.Provider
 	Model    string
-	System   string
 	// OnEvent 每来一个流式事件就调一次。不需要就留空。
 	OnEvent func(ai.Event)
 }
@@ -30,7 +29,6 @@ func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, er
 
 	stream, err := a.Provider.Stream(ctx, ai.Request{
 		Model:    a.Model,
-		System:   a.System,
 		Messages: history,
 	})
 	if err != nil {

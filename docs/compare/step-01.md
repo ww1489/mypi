@@ -71,13 +71,19 @@ PiG 每个消息都带 `cloneMessage()`，因为会话树分叉时要做深拷�
 
 ### 5. 没有 system prompt
 
-`Request.System` 字段有了，但 CLI 从来不填。PiG 的 system prompt 是一整套分节拼装（`internal/codingagent/prompts/coding.go`）。我们到票 03 引入工具声明增量时才会第一次真正需要它。
+mypi 现在完全不给模型任何系统提示。PiG 的 system prompt 是一整套分节拼装（`internal/codingagent/prompts/coding.go`：工具说明 → 规则 → 项目上下文 → 当前目录）。我们到票 03 引入工具声明增量时才会第一次真正需要它。
 
-### 6. system 是 Request 上的一个字段，不是消息数组里的元素
+### 6. 系统提示将来是一条消息，不是 Request 上的字段
 
-我们是 `Request{Model, System string, Messages []Message}`。
+我们**没有**系统提示。`Request` 只有 `Model` 和 `Messages`。
 
-PiG 把系统提示当成 `Messages` 数组里的一条 `SystemMessage`（`PiG/ai/messages.go:107`），它本身还带 `Sections`、`ToolsAdded`、`ToolsRemoved`：
+一开始这里是 `Request{Model, System string, Messages []Message}`，后来删掉了，原因有三条：
+
+1. 没人设置它，永远是空字符串；
+2. `Wire()` 只遍历 `Messages`，所以就算设置了也发不出去——接真 provider 时会静默丢掉；
+3. 名字叫 `System` 会让人以为它是 system 消息，读代码的人会误判。
+
+PiG 的做法不是字段，而是 `Messages` 数组里的一条 `SystemMessage`（`PiG/ai/messages.go:107`），它本身还带 `Sections`、`ToolsAdded`、`ToolsRemoved`：
 
 ```go
 type SystemMessage struct {
@@ -89,13 +95,11 @@ type SystemMessage struct {
 }
 ```
 
-**为什么要跟着改**：工具声明增量是挂在 system 消息上的，而且可能在对话中间出现（比如第 3 轮才加了一个工具）。如果 system 只能是一个固定的开头字符串，增量就无处安放。
+**为什么必须是消息而不是字符串**：工具声明增量挂在 system 消息上，而且可能出现在对话中间（比如第 3 轮才加了一个工具）。固定开头的字符串没地方放增量，也没法在中间插一条。
 
-**已知的坑**：`Request.System` 目前没有任何代码把它发出去——`Wire()` 只遍历 `Messages`。也就是说现在接真 provider 的话，系统提示会被静默丢掉，而且不报错。测试里录制到的 `"system":""` 会让人误以为"有这个字段就是生效的"。票 03 把 system 挪进数组后，这个问题会自动消失。
-
-**什么时候改**：票 03，和"工具声明以 system 消息增量下发"一起做。
+**什么时候加**：票 03，和"工具声明以 system 消息增量下发"一起做。
 
 ## 下一票的前置
 
 - 票 02 只需要 `Agent.Run` 外面套一层输入循环，`ai` 包不用动。
-- 票 03 会同时做三件事：加 `ToolResultMessage` + 把 `ContentBlock` 升级成接口 + 多实现 + 把 system 提示挪进 Messages 数组（带工具声明增量）。
+- 票 03 会同时做三件事：加 `ToolResultMessage` + 把 `ContentBlock` 升级成接口 + 多实现 + 加 `SystemMessage` 并把它放进 `Messages` 数组。

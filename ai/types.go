@@ -105,9 +105,11 @@ func Wire(msgs []Message) []WireMessage {
 //
 // Messages 是整段对话，不是一条消息。模型不记事，每次请求都得把全部历史重发。
 // 单次问答时它只有一条，多轮对话和工具调用之后会越来越长。
+//
+// 这里还没有系统提示。等票 03 引入工具声明时，会按 PiG 的做法加一条 system
+// 消息进 Messages，而不是在 Request 上挂一个字段。
 type Request struct {
 	Model    string
-	System   string
 	Messages []Message
 }
 

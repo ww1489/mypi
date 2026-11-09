@@ -219,7 +219,6 @@ func TestFauxRecordsFullRequest(t *testing.T) {
 
 	var rec struct {
 		Model    string `json:"model"`
-		System   string `json:"system"`
 		Messages []struct {
 			Role    string `json:"role"`
 			Content []struct {

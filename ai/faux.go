@@ -163,7 +163,6 @@ func (f *Faux) loadScript() error {
 // fauxRecord 是每次请求写进录制文件的那一行。
 type fauxRecord struct {
 	Model    string        `json:"model"`
-	System   string        `json:"system"`
 	Messages []WireMessage `json:"messages"`
 	Stream   bool          `json:"stream"`
 }
@@ -186,7 +185,6 @@ func (f *Faux) recordLocked(req Request) error {
 	}
 	line, err := json.Marshal(fauxRecord{
 		Model:    req.Model,
-		System:   req.System,
 		Messages: Wire(req.Messages),
 		Stream:   true,
 	})
