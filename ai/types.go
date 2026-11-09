@@ -34,7 +34,9 @@ type UserMessage struct {
 }
 
 // Role 实现 Message 接口。
-func (m *UserMessage) Role() string { return "user" }
+func (m *UserMessage) Role() string {
+	return "user"
+}
 
 // AssistantMessage 是模型发出的消息。
 type AssistantMessage struct {
@@ -45,7 +47,9 @@ type AssistantMessage struct {
 }
 
 // Role 实现 Message 接口。
-func (m *AssistantMessage) Role() string { return "assistant" }
+func (m *AssistantMessage) Role() string {
+	return "assistant"
+}
 
 // provider 返回的停止原因。
 const (
@@ -95,17 +99,26 @@ type Request struct {
 }
 
 // Event 是 provider 流式输出中的一项。
-type Event interface{ isEvent() }
+type Event interface {
+	isEvent()
+}
 
 // TextDeltaEvent 携带一段增量助手文本。
-type TextDeltaEvent struct{ Text string }
+type TextDeltaEvent struct {
+	Text string
+}
 
 // MessageDoneEvent 携带完整的助手消息。
-type MessageDoneEvent struct{ Message *AssistantMessage }
+type MessageDoneEvent struct {
+	Message *AssistantMessage
+}
 
 // ErrorEvent 表示流式输出失败。
-type ErrorEvent struct{ Err error }
+type ErrorEvent struct {
+	Err error
+}
 
+// 下面三个方法把具体类型封闭进 Event 并集：只有本包内的类型能实现 Event。
 func (TextDeltaEvent) isEvent()   {}
 func (MessageDoneEvent) isEvent() {}
 func (ErrorEvent) isEvent()       {}

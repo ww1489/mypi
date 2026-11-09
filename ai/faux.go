@@ -60,7 +60,9 @@ func NewFaux() *Faux {
 }
 
 // ID 实现 Provider 接口。
-func (f *Faux) ID() string { return "faux" }
+func (f *Faux) ID() string {
+	return "faux"
+}
 
 // Close 释放录制文件。
 func (f *Faux) Close() error {
