@@ -41,7 +41,7 @@ Flags:
       --provider P  Provider backend: faux (default: faux)
 
 Environment:
-  MYPY_FAUX_SCRIPT  Path to the scripted response file (faux provider)
+  MYPY_FAUX_SCRIPT  Path to the scripted response file (built-in demo when unset)
   MYPY_FAUX_RECORD  Path appended with one JSON line per provider request
 `
 

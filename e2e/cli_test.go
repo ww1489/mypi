@@ -182,14 +182,31 @@ func TestProviderFailureGoesToStderr(t *testing.T) {
 	}
 }
 
-func TestMissingScriptIsReportedNotPanicked(t *testing.T) {
+func TestRunsWithBuiltInScript(t *testing.T) {
 	got := run(t, nil, "hi")
+
+	if got.code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", got.code, got.stderr)
+	}
+	if !strings.Contains(got.stdout, "内置假模型") {
+		t.Errorf("stdout = %q, want the built-in demo reply", got.stdout)
+	}
+	if got.stderr != "" {
+		t.Errorf("stderr = %q, want empty", got.stderr)
+	}
+}
+
+func TestBadScriptPathIsReported(t *testing.T) {
+	got := run(t, map[string]string{"MYPY_FAUX_SCRIPT": "/nonexistent/script.json"}, "hi")
 
 	if got.code != 1 {
 		t.Fatalf("exit code = %d, want 1", got.code)
 	}
-	if !strings.Contains(got.stderr, "MYPY_FAUX_SCRIPT") {
-		t.Errorf("stderr = %q, want it to name the missing setting", got.stderr)
+	if got.stdout != "" {
+		t.Errorf("stdout = %q, want empty", got.stdout)
+	}
+	if !strings.Contains(got.stderr, "read script") {
+		t.Errorf("stderr = %q, want it to mention reading the script", got.stderr)
 	}
 	if strings.Contains(got.stderr, "panic") {
 		t.Errorf("stderr = %q, want no panic", got.stderr)

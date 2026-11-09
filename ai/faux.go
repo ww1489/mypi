@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,11 @@ import (
 	"strings"
 	"sync"
 )
+
+// defaultScript 是编进二进制里的示例脚本。没有外部脚本也能直接跑起来。
+//
+//go:embed default_script.json
+var defaultScript []byte
 
 // faux provider 用到的环境变量。
 const (
@@ -145,16 +151,22 @@ func (f *Faux) loadScript() error {
 	if f.script != nil {
 		return nil
 	}
-	if f.scriptPath == "" {
-		return fmt.Errorf("faux: %s is not set", FauxScriptEnv)
+
+	// 没指定脚本文件就用内置的那份，这样刚 clone 下来就能直接跑。
+	source := "内置示例脚本"
+	raw := defaultScript
+	if f.scriptPath != "" {
+		source = f.scriptPath
+		read, err := os.ReadFile(f.scriptPath)
+		if err != nil {
+			return fmt.Errorf("faux: read script: %w", err)
+		}
+		raw = read
 	}
-	raw, err := os.ReadFile(f.scriptPath)
-	if err != nil {
-		return fmt.Errorf("faux: read script: %w", err)
-	}
+
 	var script FauxScript
 	if err := json.Unmarshal(raw, &script); err != nil {
-		return fmt.Errorf("faux: parse script %s: %w", f.scriptPath, err)
+		return fmt.Errorf("faux: parse script %s: %w", source, err)
 	}
 	f.script = &script
 	return nil

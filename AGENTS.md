@@ -9,6 +9,15 @@ mypi 是一个教学项目：从零重写 PiG（`/data/code/PiG`）的最小内�
 - 唯一测试接缝：`mypi` 进程边界 + 假 provider 的请求录制文件。不要在测试里 import 实现包去断言内部结构。
 - 验证门槛：`go vet ./... && go test ./...`，两者都必须离线、无密钥、无网络。
 
+## 运行
+
+```bash
+go run ./cmd/mypi "hello"   # 开箱即用，默认走内置假脚本
+go run ./cmd/mypi -h
+```
+
+注意用**包路径**运行。`go run cmd/mypi/main.go` 只编译那一个文件，会报 `undefined: run`。
+
 ## 与 PiG 的对应关系
 
 | mypi | PiG | 说明 |

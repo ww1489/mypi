@@ -1,0 +1,11 @@
+{
+  "responses": [
+    {
+      "chunks": [
+        "这是 mypi 内置假模型的回复。",
+        "还没接真实模型：内容来自 ai/default_script.json。",
+        "设置 MYPY_FAUX_SCRIPT 可以换成你自己的脚本。"
+      ]
+    }
+  ]
+}
