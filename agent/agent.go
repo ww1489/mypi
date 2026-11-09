@@ -47,7 +47,9 @@ func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, er
 		case ai.MessageDoneEvent:
 			done = e.Message
 		case ai.ErrorEvent:
-			return history, e.Err
+			// 失败也要留下记录：追加一条错误消息再返回错误。
+			// 这样历史仍是「用户问了、模型答了（答的是错误）」，结构不会断。
+			return a.withFailure(history, e.Err.Error()), e.Err
 		}
 	}
 
@@ -64,4 +66,18 @@ func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, er
 	out = append(out, history...)
 	out = append(out, done)
 	return out, nil
+}
+
+// withFailure 在历史末尾补一条错误消息。
+func (a *Agent) withFailure(history []ai.Message, reason string) []ai.Message {
+	out := make([]ai.Message, 0, len(history)+1)
+	out = append(out, history...)
+	out = append(out, &ai.AssistantMessage{
+		Content:      ai.Text(""),
+		Provider:     a.Provider.ID(),
+		Model:        a.Model,
+		StopReason:   ai.StopReasonError,
+		ErrorMessage: reason,
+	})
+	return out
 }

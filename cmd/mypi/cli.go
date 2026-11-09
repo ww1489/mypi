@@ -185,15 +185,15 @@ func askRepeatedly(ctx context.Context, ag *agent.Agent, out *bufio.Writer, stde
 			continue
 		}
 
-		// 先拼出「旧历史 + 这一句」，成功才把它当成新历史。
-		// 失败时历史保持不变，免得半截问题一直挂在上下文里。
+		// 先拼出「旧历史 + 这一句」。跑失败时 Agent 也会返回带错误消息的历史，
+		// 照样收下——这样上下文里留下「问过、答错了」的痕迹，而不是一片空白。
 		next, err := ag.Run(ctx, append(cloneMessages(history), &ai.UserMessage{Content: ai.Text(line)}))
+		history = next
 		if err != nil {
 			out.Flush()
 			fmt.Fprintf(stderr, "mypi: %v\n", err)
 			continue
 		}
-		history = next
 		fmt.Fprintln(out)
 	}
 

@@ -47,10 +47,11 @@ func (m *UserMessage) Blocks() []ContentBlock {
 
 // AssistantMessage 是模型返回的内容。
 type AssistantMessage struct {
-	Content    []ContentBlock `json:"content"`
-	Provider   string         `json:"provider,omitempty"`
-	Model      string         `json:"model,omitempty"`
-	StopReason string         `json:"stopReason,omitempty"`
+	Content      []ContentBlock `json:"content"`
+	Provider     string         `json:"provider,omitempty"`
+	Model        string         `json:"model,omitempty"`
+	StopReason   string         `json:"stopReason,omitempty"`
+	ErrorMessage string         `json:"errorMessage,omitempty"`
 }
 
 // Role 返回角色名。

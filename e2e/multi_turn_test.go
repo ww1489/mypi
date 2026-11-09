@@ -119,7 +119,7 @@ func TestReplIgnoresBlankLines(t *testing.T) {
 	}
 }
 
-func TestReplKeepsGoingAfterProviderError(t *testing.T) {
+func TestReplRecordsFailedTurnInHistory(t *testing.T) {
 	script := writeScript(t, `{"responses":[
 		{"error":"boom"},
 		{"chunks":["recovered"]}
@@ -141,13 +141,20 @@ func TestReplKeepsGoingAfterProviderError(t *testing.T) {
 		t.Errorf("stdout = %q, want the second answer", got.stdout)
 	}
 
-	// 第一轮失败了，所以第二轮不该带上那半截问题。
+	// 失败的轮次要留在历史里（和 PiG 一样）：第二次请求应该是
+	// [user, assistant(失败), user]，而不是只剩半句问题。
 	records := readRecords(t, record)
 	if len(records) != 2 {
 		t.Fatalf("recorded %d requests, want 2", len(records))
 	}
-	if len(records[1].Messages) != 1 {
-		t.Errorf("second request has %d messages, want 1 (failed turn must not enter history)", len(records[1].Messages))
+	if len(records[1].Messages) != 3 {
+		t.Fatalf("second request has %d messages, want 3 (user + failed assistant + user)", len(records[1].Messages))
+	}
+	wantRoles := []string{"user", "assistant", "user"}
+	for i, msg := range records[1].Messages {
+		if msg.Role != wantRoles[i] {
+			t.Errorf("message %d role = %q, want %q", i, msg.Role, wantRoles[i])
+		}
 	}
 }
 
