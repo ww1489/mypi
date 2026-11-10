@@ -32,7 +32,7 @@ const (
 const usageText = `mypi — a minimal coding agent (teaching project)
 
 Usage:
-  mypi [flags] <prompt>
+  mypi [flags] [prompt]
 
 Flags:
   -h, --help        Show this help and exit
@@ -93,7 +93,7 @@ func parseArgs(args []string) (options, error) {
 	return opts, nil
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "mypi: %v\n\n", err)
@@ -108,11 +108,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if opts.showVersion {
 		fmt.Fprintf(stdout, "mypi %s\n", version)
 		return exitOK
-	}
-	if strings.TrimSpace(opts.prompt) == "" {
-		fmt.Fprint(stderr, "mypi: missing prompt\n\n")
-		fmt.Fprint(stderr, usageText)
-		return exitUsage
 	}
 
 	provider, err := newProvider(opts.provider)
@@ -140,15 +135,66 @@ func run(args []string, stdout, stderr io.Writer) int {
 		},
 	}
 
-	if _, err := ag.Run(ctx, []ai.Message{&ai.UserMessage{Content: ai.Text(opts.prompt)}}); err != nil {
-		out.Flush()
-		fmt.Fprintf(stderr, "mypi: %v\n", err)
-		return exitError
+	// 单次提问和 REPL 都从这里走，输出和换行也只在这一处处理。
+	ask := func(history []ai.Message) ([]ai.Message, error) {
+		wrote = false
+		next, runErr := ag.Run(ctx, history)
+		if wrote {
+			out.WriteString("\n")
+		}
+		flushErr := out.Flush()
+		if runErr != nil {
+			return next, runErr
+		}
+		return next, flushErr
 	}
-	if wrote {
-		out.WriteString("\n")
+
+	if strings.TrimSpace(opts.prompt) != "" {
+		_, err := ask([]ai.Message{&ai.UserMessage{Content: ai.Text(opts.prompt)}})
+		if err != nil {
+			fmt.Fprintf(stderr, "mypi: %v\n", err)
+			return exitError
+		}
+		return exitOK
 	}
-	if err := out.Flush(); err != nil {
+
+	// 只有键盘输入才显示提示符，管道输入要保持输出干净。
+	interactive := false
+	if file, ok := stdin.(*os.File); ok {
+		if info, statErr := file.Stat(); statErr == nil {
+			interactive = info.Mode()&os.ModeCharDevice != 0
+		}
+	}
+
+	scanner := bufio.NewScanner(stdin)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var history []ai.Message
+	for {
+		if interactive {
+			fmt.Fprint(out, "> ")
+			if err := out.Flush(); err != nil {
+				fmt.Fprintf(stderr, "mypi: %v\n", err)
+				return exitError
+			}
+		}
+		if !scanner.Scan() {
+			break
+		}
+		prompt := strings.TrimSpace(scanner.Text())
+		if prompt == "" {
+			continue
+		}
+
+		turn := make([]ai.Message, 0, len(history)+1)
+		turn = append(turn, history...)
+		turn = append(turn, &ai.UserMessage{Content: ai.Text(prompt)})
+		next, err := ask(turn)
+		history = next
+		if err != nil {
+			fmt.Fprintf(stderr, "mypi: %v\n", err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(stderr, "mypi: %v\n", err)
 		return exitError
 	}

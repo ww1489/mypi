@@ -1,7 +1,7 @@
 // Package agent 负责调用 provider，并把结果拼回对话历史。
 //
-// 现在一次只发一个请求。多轮对话、工具调用、事件分发都在后面的步骤里加，
-// 这样每次新增都能在 diff 里看得很清楚。
+// 这里一次只发一个请求。调用方可以反复调用 Run，把上一轮返回的历史带进下一轮；
+// 工具调用和事件分发在后面的步骤里加。
 package agent
 
 import (
@@ -32,7 +32,7 @@ func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, er
 		Messages: history,
 	})
 	if err != nil {
-		return history, err
+		return a.failedTurn(history, err)
 	}
 
 	var text strings.Builder
@@ -44,10 +44,10 @@ func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, er
 		switch e := ev.(type) {
 		case ai.TextDeltaEvent:
 			text.WriteString(e.Text)
-		case ai.MessageDoneEvent:
+		case ai.DoneEvent:
 			done = e.Message
 		case ai.ErrorEvent:
-			return history, e.Err
+			return a.failedTurn(history, e.Err)
 		}
 	}
 
@@ -64,4 +64,19 @@ func (a *Agent) Run(ctx context.Context, history []ai.Message) ([]ai.Message, er
 	out = append(out, history...)
 	out = append(out, done)
 	return out, nil
+}
+
+// failedTurn 给失败的一轮也补一条 assistant 消息。
+// 这样下一轮看到的仍然是「问一句、答一句」的完整顺序。
+func (a *Agent) failedTurn(history []ai.Message, err error) ([]ai.Message, error) {
+	failed := &ai.AssistantMessage{
+		Provider:     a.Provider.ID(),
+		Model:        a.Model,
+		StopReason:   ai.StopReasonError,
+		ErrorMessage: err.Error(),
+	}
+	out := make([]ai.Message, 0, len(history)+1)
+	out = append(out, history...)
+	out = append(out, failed)
+	return out, err
 }

@@ -126,7 +126,7 @@ func (f *Faux) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 		if stop == "" {
 			stop = StopReasonStop
 		}
-		send(ctx, ch, MessageDoneEvent{Message: &AssistantMessage{
+		send(ctx, ch, DoneEvent{Message: &AssistantMessage{
 			Content:    Text(text.String()),
 			Provider:   f.ID(),
 			Model:      req.Model,

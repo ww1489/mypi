@@ -47,10 +47,11 @@ func (m *UserMessage) Blocks() []ContentBlock {
 
 // AssistantMessage 是模型返回的内容。
 type AssistantMessage struct {
-	Content    []ContentBlock `json:"content"`
-	Provider   string         `json:"provider,omitempty"`
-	Model      string         `json:"model,omitempty"`
-	StopReason string         `json:"stopReason,omitempty"`
+	Content      []ContentBlock `json:"content"`
+	Provider     string         `json:"provider,omitempty"`
+	Model        string         `json:"model,omitempty"`
+	StopReason   string         `json:"stopReason,omitempty"`
+	ErrorMessage string         `json:"errorMessage,omitempty"`
 }
 
 // Role 返回角色名。
@@ -123,8 +124,8 @@ type TextDeltaEvent struct {
 	Text string
 }
 
-// MessageDoneEvent 表示这次回答结束了，并且带着完整的消息。
-type MessageDoneEvent struct {
+// DoneEvent 表示这次回答结束了，并且带着完整的消息。
+type DoneEvent struct {
 	Message *AssistantMessage
 }
 
@@ -134,9 +135,9 @@ type ErrorEvent struct {
 }
 
 // 下面三个方法让 Event 只能由本包里的类型实现。
-func (TextDeltaEvent) isEvent()   {}
-func (MessageDoneEvent) isEvent() {}
-func (ErrorEvent) isEvent()       {}
+func (TextDeltaEvent) isEvent() {}
+func (DoneEvent) isEvent()      {}
+func (ErrorEvent) isEvent()     {}
 
 // Provider 是每个模型后端都要实现的接口。
 type Provider interface {
@@ -144,6 +145,6 @@ type Provider interface {
 	ID() string
 
 	// Stream 发一次请求，用一个 channel 把结果流式吐出来。
-	// channel 由实现方关闭，最后一条一定是 MessageDoneEvent 或 ErrorEvent。
+	// channel 由实现方关闭，最后一条一定是 DoneEvent 或 ErrorEvent。
 	Stream(ctx context.Context, req Request) (<-chan Event, error)
 }
