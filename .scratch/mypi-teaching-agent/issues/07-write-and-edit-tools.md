@@ -1,8 +1,8 @@
-# 06: `write` 与 `edit` 工具
+# 07: `write` 与 `edit` 工具
 
 **What to build:** agent 能把结论落到仓库里：整文件写入，以及按精确文本替换的编辑（支持一次提交多段互不重叠的编辑）。找不到目标文本、目标文本出现多次、编辑区间重叠时，都给出可恢复的错误结果供模型重试，而不是静默改错文件。
 
-**Blocked by:** 05
+**Blocked by:** 06
 
 **Status:** ready-for-agent
 

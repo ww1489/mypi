@@ -16,7 +16,7 @@
 
 1. **provider 接口的形状**：`ID() string` + `Stream(ctx, req) (<-chan Event, error)`。PiG 还有 `io.Closer`，我们用类型断言按需处理（`ai/faux.go` 的 `Close`）。
 2. **事件是封闭并集**：用私有方法 `isEvent()` 关住，只有本包能实现。PiG 的 `AgentEvent` 也是这个套路。
-3. **契约写在注释里，而不是靠约定**：channel 由实现方关闭、最后一条一定是 done 或 error。这条契约到 step-04 换成真 SSE 时不用改。
+3. **契约写在注释里，而不是靠约定**：channel 由实现方关闭、最后一条一定是 done 或 error。这条契约到票 03 换成真 SSE 时不用改。
 4. **消息的 JSON 字段名**：`role`、`content`、`toolCallId`、`stopReason`、`isError`。后面存会话文件时可以和 PiG 逐字段对比。
 
 ## 故意不一样的地方
@@ -49,13 +49,13 @@ PiG 还按角色限制了能放哪些块（`PiG/ai/messages.go:51-104`）：`Use
 
 **代价是什么**：编译器不拦 `ContentBlock{Type: "toolCall", Text: "x"}`，也不拦 `Type: "image"` 却没有 `Data`。现在不会出问题，加了工具调用之后会。
 
-**什么时候改**：票 03（`03-read-tool-loop.md`）。那时第一次出现"assistant 内容里有两种块并且要分别处理"，接口方案的好处才看得见，切换成本也最低（此时只被 `Text`、`Wire`、`faux` 和一处测试用到）。
+**什么时候改**：票 04（`04-read-tool-loop.md`）。那时第一次出现"assistant 内容里有两种块并且要分别处理"，接口方案的好处才看得见，切换成本也最低（此时只被 `Text`、`Wire`、`faux` 和一处测试用到）。
 
 ### 2. Message 接口多了一个 `Blocks()`
 
 PiG 的 `Message`（`PiG/ai/messages.go:13`）是 `messageRole()` + `MessageRole()` + `cloneMessage()`，读内容靠断言到具体类型再取 `.Content`。
 
-我们加了 `Blocks() []ContentBlock`，原因是 `Wire()` 里两个分支代码完全一样，说明判断多余。副作用是以后新增消息类型（比如票 03 的 `ToolResultMessage`）只要实现 `Blocks()` 就会自动被发出去，不会因为漏写 `case` 被静默丢掉。
+我们加了 `Blocks() []ContentBlock`，原因是 `Wire()` 里两个分支代码完全一样，说明判断多余。副作用是以后新增消息类型（比如票 04 的 `ToolResultMessage`）只要实现 `Blocks()` 就会自动被发出去，不会因为漏写 `case` 被静默丢掉。
 
 PiG 不需要这个，因为它本来就要求按类型分情况处理内容。
 
@@ -67,11 +67,11 @@ PiG 每个消息都带 `cloneMessage()`，因为会话树分叉时要做深拷�
 
 `AssistantMessage` 在 PiG 里还有 `API`、`ResponseModel`、`ResponseID`、`Usage`、`RawStopReason`、`Diagnostics` 等。我们只有 `Content`、`Provider`、`Model`、`StopReason`。缺的那些等用到时再加：
 - `Usage`（token 计数）→ 票 10 做压缩时必须要
-- `API` → 票 04 接真 provider 时可能要，用于区分协议
+- `API` → 票 03 接真 provider 时可能要，用于区分协议
 
 ### 5. 没有 system prompt
 
-mypi 现在完全不给模型任何系统提示。PiG 的 system prompt 是一整套分节拼装（`internal/codingagent/prompts/coding.go`：工具说明 → 规则 → 项目上下文 → 当前目录）。我们到票 03 引入工具声明增量时才会第一次真正需要它。
+mypi 现在完全不给模型任何系统提示。PiG 的 system prompt 是一整套分节拼装（`internal/codingagent/prompts/coding.go`：工具说明 → 规则 → 项目上下文 → 当前目录）。我们到票 04 引入工具声明增量时才会第一次真正需要它。
 
 ### 6. 系统提示将来是一条消息，不是 Request 上的字段
 
@@ -97,9 +97,9 @@ type SystemMessage struct {
 
 **为什么必须是消息而不是字符串**：工具声明增量挂在 system 消息上，而且可能出现在对话中间（比如第 3 轮才加了一个工具）。固定开头的字符串没地方放增量，也没法在中间插一条。
 
-**什么时候加**：票 03，和"工具声明以 system 消息增量下发"一起做。
+**什么时候加**：票 04，和"工具声明以 system 消息增量下发"一起做。
 
 ## 下一票的前置
 
 - 票 02 只需要 `Agent.Run` 外面套一层输入循环，`ai` 包不用动。
-- 票 03 会同时做三件事：加 `ToolResultMessage` + 把 `ContentBlock` 升级成接口 + 多实现 + 加 `SystemMessage` 并把它放进 `Messages` 数组。
+- 票 04 会同时做三件事：加 `ToolResultMessage` + 把 `ContentBlock` 升级成接口 + 多实现 + 加 `SystemMessage` 并把它放进 `Messages` 数组。
