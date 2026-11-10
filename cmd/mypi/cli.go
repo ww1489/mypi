@@ -123,23 +123,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defer stop()
 
 	out := bufio.NewWriter(stdout)
-	wrote := false
 	ag := &agent.Agent{
 		Provider: provider,
 		Model:    opts.model,
 		OnEvent: func(ev ai.Event) {
 			if delta, ok := ev.(ai.TextDeltaEvent); ok && delta.Text != "" {
 				out.WriteString(delta.Text)
-				wrote = true
 			}
 		},
 	}
 
 	// 单次提问和 REPL 都从这里走，输出和换行也只在这一处处理。
 	ask := func(history []ai.Message) ([]ai.Message, error) {
-		wrote = false
 		next, runErr := ag.Run(ctx, history)
-		if wrote {
+		if runErr == nil {
 			out.WriteString("\n")
 		}
 		flushErr := out.Flush()
